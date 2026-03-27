@@ -1,97 +1,182 @@
 # Efficient AI Inference for Edge Devices
 
-> ReLU Technologies — AI Systems Internship Challenge
+ReLU Technologies AI Systems Internship Challenge
 
-## Results at a Glance
+This project compares a strong NLP baseline with smaller and faster deployment-ready alternatives for IMDB sentiment classification. The idea is simple: start with a fine-tuned DistilBERT model, then optimize it in different ways and measure the tradeoff between accuracy, model size, and CPU latency.
 
-Run `python scripts/benchmark.py` after training and optimization to populate the benchmark table and plots.
+## What This Project Does
 
-![Pareto](benchmarks/plots/pareto_accuracy_latency.png)
+The repository builds and compares these model variants:
 
-## Key Findings
+- `Baseline`: fine-tuned DistilBERT for sentiment classification
+- `Quantized INT8`: PyTorch dynamic quantization of the baseline model
+- `ONNX Baseline`: baseline model exported to ONNX Runtime
+- `ONNX Optimized`: ONNX model with graph optimization
+- `ONNX Quantized`: ONNX Runtime quantized model
+- `LSTM Student`: a much smaller distilled student model
 
-- **ONNX Runtime + INT8 quantization** reduces latency while typically keeping accuracy within a narrow margin of the baseline.
-- **Knowledge distillation to LSTM** targets a dramatic size reduction with an intentional accuracy tradeoff.
-- The distilled LSTM is designed to be the smallest and fastest CPU-friendly model in the project.
+The goal is not just to get the best accuracy. It is to find the most practical model for deployment on CPU or edge-like environments.
 
-## Quick Start
+## Main Takeaway
 
-```bash
-git clone https://github.com/[username]/relu-ai-intern-challenge.git
-cd relu-ai-intern-challenge
-make setup
-make all
-make demo
-```
+- Best raw accuracy: `Baseline DistilBERT`
+- Best overall deployment tradeoff: `ONNX Quantized`
+- Best ultra-light option: `LSTM Student`
 
-## Project Structure
+In this project, `ONNX Quantized` turned out to be the best balance between quality and efficiency. The distilled LSTM was by far the smallest and fastest model, but with a larger drop in accuracy.
+
+## Final Benchmark Summary
+
+| Model | Accuracy | F1 | Size (MB) | Latency p50 (ms) |
+|---|---:|---:|---:|---:|
+| Baseline | 0.913 | 0.913 | 1788.8 | 283.1 |
+| Quantized INT8 | 0.897 | 0.902 | 132.3 | 221.5 |
+| ONNX Baseline | 0.913 | 0.913 | 255.5 | 300.0 |
+| ONNX Optimized | 0.913 | 0.913 | 256.3 | 295.1 |
+| ONNX Quantized | 0.910 | 0.910 | 64.2 | 234.2 |
+| LSTM Student | 0.822 | 0.828 | 16.0 | 1.9 |
+
+## Repository Layout
 
 ```text
-relu-ai-intern-challenge/
-├── data/
-├── models/
-│   ├── baseline/
-│   │   └── distilbert_imdb.pt
-│   ├── quantized/
-│   │   └── distilbert_imdb_int8.pt
-│   ├── onnx/
-│   │   ├── distilbert_imdb.onnx
-│   │   └── distilbert_imdb_optimized.onnx
-│   └── distilled/
-│       └── lstm_student.pt
-├── scripts/
-│   ├── train_baseline.py
-│   ├── optimize_quantize.py
-│   ├── optimize_onnx.py
-│   ├── distill_to_lstm.py
-│   ├── benchmark.py
-│   ├── edge_simulate.py
-│   └── run_inference.py
+.
 ├── benchmarks/
-│   ├── results.json
-│   └── plots/
-│       ├── latency_comparison.png
-│       ├── size_comparison.png
-│       └── pareto_accuracy_latency.png
+├── data/
+├── implementation.md
+├── models/
 ├── report/
-│   └── report.pdf
+│   ├── report.pdf
+│   └── report.tex
 ├── requirements.txt
 ├── Makefile
-├── .gitignore
-└── README.md
+├── README.md
+└── scripts/
+    ├── benchmark.py
+    ├── distill_to_lstm.py
+    ├── edge_simulate.py
+    ├── model_loading.py
+    ├── optimize_onnx.py
+    ├── optimize_quantize.py
+    ├── run_inference.py
+    └── train_baseline.py
 ```
 
-## Approach
+## Setup
 
-### Dataset
+Install dependencies:
 
-IMDB sentiment classification (25K train / 25K test). Binary classification. Chose this over CIFAR-10 because transformer optimization for NLP is more challenging and demonstrates deeper understanding of the inference pipeline.
+```bash
+pip install -r requirements.txt
+```
 
-### Baseline
+Or use the Makefile:
 
-DistilBERT (66M parameters) fine-tuned for 2 epochs. Sequence length 256.
+```bash
+make setup
+```
 
-### Optimization Techniques
+## How To Run
 
-1. **Dynamic INT8 Quantization** — PyTorch `quantize_dynamic` on all Linear layers
-2. **ONNX Runtime Optimization** — Graph-level operator fusion (attention + LayerNorm), constant folding, plus ONNX-level INT8 quantization
-3. **Knowledge Distillation** — Distilled DistilBERT into a bidirectional LSTM student using KL-divergence soft targets (`T=4`, `alpha=0.7`)
+### 1. Train the baseline model
 
-### Edge Simulation
+```bash
+python scripts/train_baseline.py
+```
 
-All benchmarks run on CPU with `torch.set_num_threads(1)` to simulate single-core edge deployment. Batch size 1 is used for latency, batch size 32 for throughput.
+### 2. Create optimized versions
 
-## Benchmark Details
+```bash
+python scripts/optimize_quantize.py
+python scripts/optimize_onnx.py
+python scripts/distill_to_lstm.py
+```
 
-Full benchmark output is written to `benchmarks/results.json`.
+Or run them together:
 
-## Lessons Learned
+```bash
+make optimize
+```
 
-- Dynamic quantization should be considered a default CPU deployment pass for transformer inference.
-- Graph-level ONNX optimization can materially improve transformer latency beyond raw export.
-- Distillation exposes the clearest accuracy-versus-efficiency tradeoff in the project.
-- The Pareto frontier is the cleanest way to compare deployment-ready model variants.
+### 3. Benchmark all models
 
-## Author
+```bash
+python scripts/benchmark.py
+```
 
-[Your name] — UVCE B.Tech
+This generates benchmark outputs and plots under `benchmarks/`.
+
+### 4. Run the edge simulation
+
+```bash
+python scripts/edge_simulate.py
+```
+
+This gives a deployment-style summary for CPU / edge scenarios.
+
+### 5. Try inference yourself
+
+```bash
+python scripts/run_inference.py --model all
+```
+
+Examples:
+
+```bash
+python scripts/run_inference.py --model baseline --text "This movie was excellent."
+python scripts/run_inference.py --model onnx_quantized --text "This movie was boring and too long."
+python scripts/run_inference.py --model distilled --text "A surprisingly good film." --benchmark
+```
+
+Available model choices:
+
+- `baseline`
+- `quantized`
+- `onnx`
+- `onnx_optimized`
+- `onnx_quantized`
+- `distilled`
+- `optimized` which aliases the recommended deployment model
+- `all`
+
+## Script Guide
+
+- `scripts/train_baseline.py`
+  Fine-tunes DistilBERT on IMDB and saves the baseline model.
+
+- `scripts/optimize_quantize.py`
+  Applies PyTorch dynamic INT8 quantization and evaluates it.
+
+- `scripts/optimize_onnx.py`
+  Exports the model to ONNX, applies optimization, and benchmarks ONNX variants.
+
+- `scripts/distill_to_lstm.py`
+  Trains a distilled bidirectional LSTM student from the DistilBERT teacher.
+
+- `scripts/benchmark.py`
+  Benchmarks all available models on CPU and writes comparison outputs.
+
+- `scripts/edge_simulate.py`
+  Produces an edge-readiness style report.
+
+- `scripts/run_inference.py`
+  Lets you run predictions interactively on one or more model variants.
+
+## Notes
+
+- All benchmarking is CPU-focused.
+- The project uses IMDB sentiment classification as the benchmark task.
+- PyTorch 2.6 changed `torch.load` defaults, so quantized model loading is handled carefully through `scripts/model_loading.py`.
+- Memory numbers from a shared process should be interpreted carefully, especially in edge simulation.
+
+## Report
+
+The short technical report is available in:
+
+- `report/report.tex`
+- `report/report.pdf`
+
+## Kaggle Links
+
+- Training notebook: <https://www.kaggle.com/code/shreeshabhat1004/training>
+- Benchmark notebook: <https://www.kaggle.com/code/shreeshabhat1004/benchmark>
+- Inference notebook: <https://www.kaggle.com/code/shreeshabhat1004/inference?scriptVersionId=306837239>
